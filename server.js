@@ -54,8 +54,7 @@ app.post("/chat", async (req, res) => {
   throw new Error(
     `Gemini API HTTP ${response.status}: ${JSON.stringify(data.error || data)}`
   );
-      }
-        }
+    
 
         const reply = data.candidates?.[0]?.content?.parts
           ?.map(part => part.text || "")
@@ -88,10 +87,8 @@ app.post("/chat", async (req, res) => {
   throw new Error(
     `OpenAI API HTTP ${response.status}: ${JSON.stringify(data.error || data)}`
   );
-        }
-        }
-
-        const reply = data.output
+  
+       const reply = data.output
           ?.flatMap(item => item.content || [])
           .filter(item => item.type === "output_text")
           .map(item => item.text)

@@ -14,6 +14,100 @@ app.get("/", (req, res) => {
   });
 });
 
+// Suu natural AI voice endpoint
+app.post("/voice", async (req, res) => {
+  const { text } = req.body || {};
+
+  if (!text || typeof text !== "string" || !text.trim()) {
+    return res.status(400).json({
+      error: "Please provide text to speak."
+    });
+  }
+
+  if (text.length > 4000) {
+    return res.status(413).json({
+      error: "Text is too long."
+    });
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  if (!apiKey) {
+    return res.status(503).json({
+      error: "Gemini API key is missing."
+    });
+  }
+
+  try {
+    const response = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash-tts:generateContent",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text: text.trim(),
+              speech_metadata: {
+                style: "Speak naturally in Hindi or Hinglish with a warm, gentle, friendly Indian conversational style and relaxed pace."
+              }
+            }]
+          }],
+          generationConfig: {
+            responseModalities: ["AUDIO"],
+            speechConfig: {
+              voiceConfig: {
+                voice: "Kore"
+              }
+            }
+          }
+        })
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error(
+        "Gemini voice error:",
+        response.status,
+        data.error?.message || "Unknown error"
+      );
+
+      return res.status(502).json({
+        error: "Gemini voice generation failed.",
+        details: data.error?.message || "Check Gemini TTS API access."
+      });
+    }
+
+    const audioPart =
+      data.candidates?.[0]?.content?.parts?.find(
+        part => part.inlineData?.data
+      );
+
+    if (!audioPart) {
+      return res.status(502).json({
+        error: "Gemini did not return audio."
+      });
+    }
+
+    return res.json({
+      audioBase64: audioPart.inlineData.data,
+      mimeType: audioPart.inlineData.mimeType || "audio/wav"
+    });
+
+  } catch (error) {
+    console.error("Voice endpoint error:", error.message);
+
+    return res.status(502).json({
+      error: "Could not generate Suu voice."
+    });
+  }
+});
+
 // AI chat endpoint
 app.post("/chat", async (req, res) => {
   const { message, provider } = req.body || {};

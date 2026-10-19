@@ -56,14 +56,11 @@ app.post("/voice", async (req, res) => {
               }
             }]
           }],
-          generationConfig: {
+           generationConfig: {
             responseModalities: ["AUDIO"],
             speechConfig: {
               voiceConfig: {
-  prebuiltVoiceConfig: {
-    voiceName: "Kore"
-  }
-              }
+                voice: "Kore"
               }
             }
           }

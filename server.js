@@ -96,7 +96,7 @@ app.post("/chat", async (req, res) => {
         return res.json({ reply, provider: "openai" });
       }
     } catch (error) {
-      console.error(`${ai} request failed`);
+      console.error(`${ai} request failed:`, error.message);
     }
   }
 

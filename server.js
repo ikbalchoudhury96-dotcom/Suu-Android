@@ -50,8 +50,11 @@ app.post("/chat", async (req, res) => {
 
         const data = await response.json();
 
-        if (!response.ok) {
-          throw new Error("Gemini API request failed");
+      if (!response.ok) {
+  throw new Error(
+    `Gemini API HTTP ${response.status}: ${JSON.stringify(data.error || data)}`
+  );
+      }
         }
 
         const reply = data.candidates?.[0]?.content?.parts
@@ -82,7 +85,10 @@ app.post("/chat", async (req, res) => {
         const data = await response.json();
 
         if (!response.ok) {
-          throw new Error("OpenAI API request failed");
+  throw new Error(
+    `OpenAI API HTTP ${response.status}: ${JSON.stringify(data.error || data)}`
+  );
+        }
         }
 
         const reply = data.output

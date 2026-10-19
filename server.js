@@ -60,7 +60,10 @@ app.post("/voice", async (req, res) => {
             responseModalities: ["AUDIO"],
             speechConfig: {
               voiceConfig: {
-                voice: "Kore"
+  prebuiltVoiceConfig: {
+    voiceName: "Kore"
+  }
+              }
               }
             }
           }

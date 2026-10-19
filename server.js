@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 
 const app = express();
+
 app.use(cors());
 app.use(express.json());
 
@@ -13,25 +14,38 @@ app.get("/", (req, res) => {
 });
 
 app.post("/chat", async (req, res) => {
-  const { message, provider } = req.body;
+  const { message, provider } = req.body || {};
 
-  if (!message) {
+  if (!message || typeof message !== "string") {
     return res.status(400).json({
-      error: "Message is required"
+      error: "Please provide a message."
     });
   }
 
-  const providers = provider === "openai"
-    ? ["openai", "gemini"]
-    : provider === "gemini"
-      ? ["gemini", "openai"]
-      : ["gemini", "openai"];
+  let providers;
+
+  if (provider === "gemini") {
+    providers = ["gemini", "openai"];
+  } else if (provider === "openai") {
+    providers = ["openai", "gemini"];
+  } else {
+    providers = ["gemini", "openai"];
+  }
+
+  const errors = [];
 
   for (const ai of providers) {
     try {
       let response;
+      let data;
+      let reply;
 
-      if (ai === "gemini" && process.env.GEMINI_API_KEY) {
+      // GEMINI AI
+      if (ai === "gemini") {
+        if (!process.env.GEMINI_API_KEY) {
+          throw new Error("GEMINI_API_KEY is missing in Render.");
+        }
+
         response = await fetch(
           "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
           {
@@ -41,31 +55,49 @@ app.post("/chat", async (req, res) => {
               "x-goog-api-key": process.env.GEMINI_API_KEY
             },
             body: JSON.stringify({
-              contents: [{
-                parts: [{ text: message }]
-              }]
+              contents: [
+                {
+                  parts: [
+                    {
+                      text: message
+                    }
+                  ]
+                }
+              ]
             })
           }
         );
 
-        const data = await response.json();
+        data = await response.json();
 
-      if (!response.ok) {
-  throw new Error(
-    `Gemini API HTTP ${response.status}: ${JSON.stringify(data.error || data)}`
-  );
-    
+        if (!response.ok) {
+          throw new Error(
+            `Gemini HTTP ${response.status}: ${
+              data.error?.message || JSON.stringify(data)
+            }`
+          );
+        }
 
-        const reply = data.candidates?.[0]?.content?.parts
-          ?.map(part => part.text || "")
+        reply = data.candidates?.[0]?.content?.parts
+          ?.map((part) => part.text || "")
           .join("");
 
-        if (!reply) throw new Error("Empty Gemini response");
+        if (!reply) {
+          throw new Error("Gemini returned an empty response.");
+        }
 
-        return res.json({ reply, provider: "gemini" });
+        return res.json({
+          reply: reply,
+          provider: "gemini"
+        });
       }
 
-      if (ai === "openai" && process.env.OPENAI_API_KEY) {
+      // OPENAI
+      if (ai === "openai") {
+        if (!process.env.OPENAI_API_KEY) {
+          throw new Error("OPENAI_API_KEY is missing in Render.");
+        }
+
         response = await fetch(
           "https://api.openai.com/v1/responses",
           {
@@ -81,30 +113,40 @@ app.post("/chat", async (req, res) => {
           }
         );
 
-        const data = await response.json();
+        data = await response.json();
 
         if (!response.ok) {
-  throw new Error(
-    `OpenAI API HTTP ${response.status}: ${JSON.stringify(data.error || data)}`
-  );
-  
-       const reply = data.output
-          ?.flatMap(item => item.content || [])
-          .filter(item => item.type === "output_text")
-          .map(item => item.text)
+          throw new Error(
+            `OpenAI HTTP ${response.status}: ${
+              data.error?.message || JSON.stringify(data)
+            }`
+          );
+        }
+
+        reply = (data.output || [])
+          .flatMap((item) => item.content || [])
+          .filter((item) => item.type === "output_text")
+          .map((item) => item.text)
           .join("");
 
-        if (!reply) throw new Error("Empty OpenAI response");
+        if (!reply) {
+          throw new Error("OpenAI returned an empty response.");
+        }
 
-        return res.json({ reply, provider: "openai" });
+        return res.json({
+          reply: reply,
+          provider: "openai"
+        });
       }
     } catch (error) {
       console.error(`${ai} request failed:`, error.message);
+      errors.push(`${ai}: ${error.message}`);
     }
   }
 
-  res.status(502).json({
-    error: "Both AI providers failed or are not configured."
+  return res.status(502).json({
+    error: "Both AI providers failed.",
+    details: errors
   });
 });
 

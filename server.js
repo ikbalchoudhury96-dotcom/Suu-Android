@@ -4,8 +4,9 @@ const cors = require("cors");
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
 
+// Suu backend status
 app.get("/", (req, res) => {
   res.json({
     app: "Suu AI Backend",
@@ -13,6 +14,7 @@ app.get("/", (req, res) => {
   });
 });
 
+// AI chat endpoint
 app.post("/chat", async (req, res) => {
   const { message, provider } = req.body || {};
 
@@ -22,14 +24,15 @@ app.post("/chat", async (req, res) => {
     });
   }
 
+  // Default: Blues Minds. Other providers remain available as fallback.
   let providers;
 
   if (provider === "gemini") {
-    providers = ["gemini", "openai"];
+    providers = ["gemini", "bluesminds", "openai"];
   } else if (provider === "openai") {
-    providers = ["openai", "gemini"];
+    providers = ["openai", "bluesminds", "gemini"];
   } else {
-    providers = ["gemini", "openai"];
+    providers = ["bluesminds", "gemini", "openai"];
   }
 
   const errors = [];
@@ -40,10 +43,85 @@ app.post("/chat", async (req, res) => {
       let data;
       let reply;
 
-      // GEMINI AI
+      // BLUES MINDS AI
+      if (ai === "bluesminds") {
+        const apiKey = process.env.BLUESMINDS_API_KEY;
+
+        if (!apiKey) {
+          throw new Error(
+            "BLUESMINDS_API_KEY is missing in Render."
+          );
+        }
+
+        const baseUrl = (
+          process.env.BLUESMINDS_BASE_URL ||
+          "https://api.bluesminds.com/v1"
+        ).replace(/\/+$/, "");
+
+        response = await fetch(
+          `${baseUrl}/chat/completions`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${apiKey}`
+            },
+            body: JSON.stringify({
+              model: "openai/gpt-oss-20b",
+              messages: [
+                {
+                  role: "system",
+                  content:
+                    "You are Suu, a friendly AI companion. " +
+                    "Reply naturally in Hindi or Hinglish when " +
+                    "the user does. Be warm, helpful and concise."
+                },
+                {
+                  role: "user",
+                  content: message
+                }
+              ],
+              temperature: 0.7
+            })
+          }
+        );
+
+        data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            `Blues Minds HTTP ${response.status}: ` +
+            `${data.error?.message || JSON.stringify(data)}`
+          );
+        }
+
+        reply = data.choices?.[0]?.message?.content;
+
+        if (Array.isArray(reply)) {
+          reply = reply
+            .map(part => part.text || "")
+            .join("");
+        }
+
+        if (!reply || typeof reply !== "string") {
+          throw new Error(
+            "Blues Minds returned an empty response."
+          );
+        }
+
+        return res.json({
+          reply,
+          provider: "bluesminds",
+          model: "openai/gpt-oss-20b"
+        });
+      }
+
+      // GEMINI FALLBACK
       if (ai === "gemini") {
-        if (!process.env.GEMINI_API_KEY) {
-          throw new Error("GEMINI_API_KEY is missing in Render.");
+        const apiKey = process.env.GEMINI_API_KEY;
+
+        if (!apiKey) {
+          throw new Error("GEMINI_API_KEY is missing.");
         }
 
         response = await fetch(
@@ -52,16 +130,12 @@ app.post("/chat", async (req, res) => {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "x-goog-api-key": process.env.GEMINI_API_KEY
+              "x-goog-api-key": apiKey
             },
             body: JSON.stringify({
               contents: [
                 {
-                  parts: [
-                    {
-                      text: message
-                    }
-                  ]
+                  parts: [{ text: message }]
                 }
               ]
             })
@@ -72,14 +146,13 @@ app.post("/chat", async (req, res) => {
 
         if (!response.ok) {
           throw new Error(
-            `Gemini HTTP ${response.status}: ${
-              data.error?.message || JSON.stringify(data)
-            }`
+            `Gemini HTTP ${response.status}: ` +
+            `${data.error?.message || JSON.stringify(data)}`
           );
         }
 
         reply = data.candidates?.[0]?.content?.parts
-          ?.map((part) => part.text || "")
+          ?.map(part => part.text || "")
           .join("");
 
         if (!reply) {
@@ -87,15 +160,17 @@ app.post("/chat", async (req, res) => {
         }
 
         return res.json({
-          reply: reply,
+          reply,
           provider: "gemini"
         });
       }
 
-      // OPENAI
+      // OPENAI FALLBACK
       if (ai === "openai") {
-        if (!process.env.OPENAI_API_KEY) {
-          throw new Error("OPENAI_API_KEY is missing in Render.");
+        const apiKey = process.env.OPENAI_API_KEY;
+
+        if (!apiKey) {
+          throw new Error("OPENAI_API_KEY is missing.");
         }
 
         response = await fetch(
@@ -104,7 +179,7 @@ app.post("/chat", async (req, res) => {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
+              "Authorization": `Bearer ${apiKey}`
             },
             body: JSON.stringify({
               model: "gpt-4.1-mini",
@@ -117,16 +192,15 @@ app.post("/chat", async (req, res) => {
 
         if (!response.ok) {
           throw new Error(
-            `OpenAI HTTP ${response.status}: ${
-              data.error?.message || JSON.stringify(data)
-            }`
+            `OpenAI HTTP ${response.status}: ` +
+            `${data.error?.message || JSON.stringify(data)}`
           );
         }
 
         reply = (data.output || [])
-          .flatMap((item) => item.content || [])
-          .filter((item) => item.type === "output_text")
-          .map((item) => item.text)
+          .flatMap(item => item.content || [])
+          .filter(item => item.type === "output_text")
+          .map(item => item.text)
           .join("");
 
         if (!reply) {
@@ -134,7 +208,7 @@ app.post("/chat", async (req, res) => {
         }
 
         return res.json({
-          reply: reply,
+          reply,
           provider: "openai"
         });
       }
@@ -145,7 +219,7 @@ app.post("/chat", async (req, res) => {
   }
 
   return res.status(502).json({
-    error: "Both AI providers failed.",
+    error: "All configured AI providers failed.",
     details: errors
   });
 });
